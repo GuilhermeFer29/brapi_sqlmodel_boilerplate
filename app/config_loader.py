@@ -58,11 +58,15 @@ class AppConfig(BaseModel):
     """Configuração principal da aplicação"""
     
     environment: str = "dev"
-    brapi: BrapiConfig = BrapiConfig()
-    cache: CacheConfig = CacheConfig()
-    database: DatabaseConfig = DatabaseConfig()
-    llm: LLMConfig = LLMConfig()
-    backend: BackendConfig = BackendConfig()
+    brapi: BrapiConfig = Field(default_factory=BrapiConfig)
+    cache: CacheConfig = Field(default_factory=CacheConfig)
+    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    llm: LLMConfig = Field(default_factory=LLMConfig)
+    backend: BackendConfig = Field(default_factory=BackendConfig)
+
+
+# Rebuild do modelo após todas as definições (necessário com from __future__ import annotations)
+AppConfig.model_rebuild()
 
 
 def load_config_from_toml(config_path: str | Path = "config.toml") -> dict[str, Any] | None:
