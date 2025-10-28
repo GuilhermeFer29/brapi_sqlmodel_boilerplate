@@ -108,7 +108,6 @@ def build_agent() -> Agent:
         tools=[brapi_mcp],
         instructions=system_prompt,
         markdown=True,
-        show_tool_calls=True,  # Mostrar quais ferramentas estão sendo usadas
     )
     return agent
 
