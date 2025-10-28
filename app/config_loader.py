@@ -20,54 +20,49 @@ except ImportError:
         tomli = None  # type: ignore
 
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings
 
 
 class BrapiConfig(BaseModel):
     """Configurações da API brapi"""
-    mcp_url: str = Field(default="https://brapi.dev/api/mcp/mcp")
-    base_url: str = Field(default="https://brapi.dev")
-    api_key: str = Field(default="")
-    token: str = Field(default="")
+    mcp_url: str = "https://brapi.dev/api/mcp/mcp"
+    base_url: str = "https://brapi.dev"
+    api_key: str = ""
+    token: str = ""
 
 
 class CacheConfig(BaseModel):
     """Configurações de cache"""
-    quote_ttl_seconds: int = Field(default=1800)
-    crypto_ttl_seconds: int = Field(default=3600)
-    currency_ttl_seconds: int = Field(default=3600)
-    macro_ttl_seconds: int = Field(default=86400)
+    quote_ttl_seconds: int = 1800
+    crypto_ttl_seconds: int = 3600
+    currency_ttl_seconds: int = 3600
+    macro_ttl_seconds: int = 86400
 
 
 class DatabaseConfig(BaseModel):
     """Configurações de banco de dados"""
-    redis_url: str = Field(default="redis://redis:6379/0")
-    mysql_url: str = Field(default="mysql+asyncmy://brapi_user:brapi_pass@mysql:3306/brapi_db")
+    redis_url: str = "redis://redis:6379/0"
+    mysql_url: str = "mysql+asyncmy://brapi_user:brapi_pass@mysql:3306/brapi_db"
 
 
 class LLMConfig(BaseModel):
     """Configurações do LLM"""
-    gemini_api_key: str = Field(default="")
+    gemini_api_key: str = ""
 
 
 class BackendConfig(BaseModel):
     """Configurações do backend"""
-    base_url: str = Field(default="http://localhost:8000")
+    base_url: str = "http://localhost:8000"
 
 
-class AppConfig(BaseSettings):
+class AppConfig(BaseModel):
     """Configuração principal da aplicação"""
     
-    environment: str = Field(default="dev", alias="env")
-    brapi: BrapiConfig = Field(default_factory=BrapiConfig)
-    cache: CacheConfig = Field(default_factory=CacheConfig)
-    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
-    llm: LLMConfig = Field(default_factory=LLMConfig)
-    backend: BackendConfig = Field(default_factory=BackendConfig)
-
-    class Config:
-        env_file = ".env"
-        env_nested_delimiter = "__"
+    environment: str = "dev"
+    brapi: BrapiConfig = BrapiConfig()
+    cache: CacheConfig = CacheConfig()
+    database: DatabaseConfig = DatabaseConfig()
+    llm: LLMConfig = LLMConfig()
+    backend: BackendConfig = BackendConfig()
 
 
 def load_config_from_toml(config_path: str | Path = "config.toml") -> dict[str, Any] | None:
@@ -169,7 +164,7 @@ def load_config() -> AppConfig:
                     raise ValueError("llm.gemini_api_key não configurado em secrets")
                 
                 config = AppConfig(
-                    env=environment,  # Usar 'env' ao invés de 'environment' (alias do Pydantic)
+                    environment=environment,
                     brapi=BrapiConfig(**brapi_dict),
                     cache=CacheConfig(**cache_dict) if cache_dict else CacheConfig(),
                     database=DatabaseConfig(**database_dict) if database_dict else DatabaseConfig(),
@@ -205,7 +200,7 @@ def load_config() -> AppConfig:
         # Criar instâncias dos modelos
         try:
             config = AppConfig(
-                env=config_dict["environment"],
+                environment=config_dict["environment"],
                 brapi=BrapiConfig(**config_dict["brapi"]),
                 cache=CacheConfig(**config_dict["cache"]),
                 database=DatabaseConfig(**config_dict["database"]),
@@ -221,6 +216,7 @@ def load_config() -> AppConfig:
     # Fallback para .env
     try:
         config = AppConfig(
+            environment=os.getenv("ENV", "dev"),
             brapi=BrapiConfig(
                 mcp_url=os.getenv("BRAPI_MCP_URL", "https://brapi.dev/api/mcp/mcp"),
                 base_url=os.getenv("BRAPI_BASE_URL", "https://brapi.dev"),
