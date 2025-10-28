@@ -40,7 +40,7 @@ def build_agent() -> Agent:
     model = Gemini(
         id="gemini-2.5-flash-lite-preview-09-2025", 
         api_key=gemini_api_key,
-        max_tokens=60000  # Aumentar limite de tokens para respostas longas
+        max_output_tokens=60000  # Aumentar limite de tokens para respostas longas
     )
 
     system_prompt = (
