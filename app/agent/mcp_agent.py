@@ -1,0 +1,107 @@
+from __future__ import annotations
+
+import os
+import asyncio
+from agno.agent import Agent
+from agno.tools.mcp import MCPTools, StreamableHTTPClientParams
+from agno.models.google import Gemini
+
+__all__ = ["build_agent", "build_agent_sync", "run_sync"]
+
+
+def build_agent() -> Agent:
+    """
+    Agente Agno usando Gemini 2.5 Flash + MCP brapi (remoto).
+    """
+    brapi_mcp_url = os.getenv("BRAPI_MCP_URL", "https://brapi.dev/api/mcp/mcp")
+    brapi_token = os.getenv("BRAPI_API_KEY", "")
+
+    if not brapi_token:
+        raise RuntimeError("BRAPI_API_KEY não configurado no ambiente (.env).")
+
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_api_key:
+        raise RuntimeError("GEMINI_API_KEY não configurado no ambiente (.env).")
+
+    model = Gemini(id="gemini-2.5-flash-lite-preview-09-2025", api_key=gemini_api_key)
+
+    system_prompt = (
+        "Você é um analista financeiro especializado em dados do mercado brasileiro.\n\n"
+        "FERRAMENTAS MCP DISPONÍVEIS (brapi.dev/docs/mcp):\n"
+        "📊 Públicas: get_available_stocks, get_available_currencies, get_available_cryptocurrencies, get_available_inflation_countries\n"
+        "💎 Premium: get_stock_quotes, get_currency_rates, get_crypto_prices, get_inflation_data, get_prime_rate_data\n\n"
+        "FILTROS CORRETOS PARA get_available_stocks:\n"
+        "Setores (sector):\n"
+        "  - Finance (Bancos e instituições financeiras)\n"
+        "  - Energy Minerals (Petróleo e energia)\n"
+        "  - Technology Services (Tecnologia)\n"
+        "  - Health Services (Saúde)\n"
+        "  - Retail Trade (Varejo)\n"
+        "  - Utilities (Energia elétrica e saneamento)\n\n"
+        "Tipos (type):\n"
+        "  - stock (Ações)\n"
+        "  - fund (Fundos imobiliários - FIIs)\n"
+        "  - bdr (Brazilian Depositary Receipts)\n\n"
+        "Ordenação (sort):\n"
+        "  - volume (Volume de negociação)\n"
+        "  - market_cap_basic (Valor de mercado)\n"
+        "  - change (Variação percentual)\n"
+        "  - close (Preço de fechamento)\n"
+        "  - name (Ordem alfabética)\n\n"
+        "ESTRATÉGIA DE USO:\n"
+        "1. Para DESCOBERTA (listar ativos):\n"
+        "   - Use get_available_stocks com filtros corretos\n"
+        "   - Exemplo: sector='Finance' para bancos\n"
+        "   - Exemplo: sector='Energy Minerals' para energia\n"
+        "   - Exemplo: sort='volume' para ordenar por volume\n\n"
+        "2. Para COTAÇÕES E DADOS:\n"
+        "   - Use get_stock_quotes com ticker específico\n"
+        "   - Use get_currency_rates com par (USD-BRL, EUR-BRL, etc)\n"
+        "   - Use get_crypto_prices com símbolo (BTC, ETH, etc)\n\n"
+        "EXEMPLOS DE CONSULTAS CORRETAS:\n"
+        "- 'Quais são os bancos mais negociados?' → get_available_stocks(sector='Finance', sort='volume')\n"
+        "- 'Ações de energia com maior volume' → get_available_stocks(sector='Energy Minerals', sort='volume')\n"
+        "- 'Qual a cotação de PETR4?' → get_stock_quotes(tickers='PETR4')\n"
+        "- 'Fundos imobiliários disponíveis' → get_available_stocks(type='fund')\n\n"
+        "FORMATO DE RESPOSTA:\n"
+        "- Use markdown para formatar\n"
+        "- Seja conciso e objetivo\n"
+        "- Mostre os resultados obtidos das ferramentas\n"
+        "- Não mostre erros internos, apenas resultados úteis"
+    )
+
+    server_params = StreamableHTTPClientParams(
+        url=brapi_mcp_url,
+        headers={"Authorization": f"Bearer {brapi_token}"}
+    )
+
+    # Create MCPTools without context manager - it will be managed by the Agent
+    brapi_mcp = MCPTools(transport="streamable-http", server_params=server_params)
+    
+    agent = Agent(
+        name="finance-buddy",
+        model=model,
+        tools=[brapi_mcp],
+        instructions=system_prompt,
+        markdown=True,
+    )
+    return agent
+
+
+def run_sync(agent: Agent, message: str) -> str:
+    """
+    Versão síncrona para uso no Streamlit.
+    """
+    try:
+        # Use agent.run() for synchronous execution
+        result = agent.run(message)
+        # Extract the content from the RunOutput object
+        if hasattr(result, 'content'):
+            return str(result.content) if result.content is not None else "Nenhuma resposta disponível"
+        return str(result) if result is not None else "Nenhuma resposta disponível"
+    except Exception as e:
+        return f"Erro ao processar requisição: {str(e)}"
+
+
+# Alias for backward compatibility
+build_agent_sync = build_agent
