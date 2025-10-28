@@ -1,11 +1,13 @@
-from __future__ import annotations
-
 import os
+import sys
 import requests
 import streamlit as st
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Add project root to path (needed for Streamlit Cloud)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.agent.mcp_agent import build_agent_sync, run_sync
 

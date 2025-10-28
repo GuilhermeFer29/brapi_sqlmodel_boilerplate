@@ -5,11 +5,9 @@ Suporta tanto TOML quanto .env para flexibilidade.
 Prioridade: TOML > .env > valores padrão
 """
 
-from __future__ import annotations
-
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 try:
     import tomli  # Python < 3.11
@@ -65,11 +63,7 @@ class AppConfig(BaseModel):
     backend: BackendConfig = Field(default_factory=BackendConfig)
 
 
-# Rebuild do modelo após todas as definições (necessário com from __future__ import annotations)
-AppConfig.model_rebuild()
-
-
-def load_config_from_toml(config_path: str | Path = "config.toml") -> dict[str, Any] | None:
+def load_config_from_toml(config_path: str = "config.toml") -> Optional[dict[str, Any]]:
     """
     Carrega configurações de um arquivo TOML
     
