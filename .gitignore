@@ -2,3 +2,4 @@
 /config.toml
 /.venv
 /.streamlit/secrets.toml
+docs/
