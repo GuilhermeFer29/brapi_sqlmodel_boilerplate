@@ -37,7 +37,11 @@ def build_agent() -> Agent:
     if not gemini_api_key:
         raise RuntimeError("GEMINI_API_KEY não configurado. Configure via Streamlit Secrets, config.toml ou .env")
 
-    model = Gemini(id="gemini-2.5-flash-lite-preview-09-2025", api_key=gemini_api_key)
+    model = Gemini(
+        id="gemini-2.5-flash-lite-preview-09-2025", 
+        api_key=gemini_api_key,
+        max_tokens=60000  # Aumentar limite de tokens para respostas longas
+    )
 
     system_prompt = (
         "Você é um analista financeiro especializado em dados do mercado brasileiro.\n\n"
@@ -79,9 +83,12 @@ def build_agent() -> Agent:
         "- 'Fundos imobiliários disponíveis' → get_available_stocks(type='fund')\n\n"
         "FORMATO DE RESPOSTA:\n"
         "- Use markdown para formatar\n"
-        "- Seja conciso e objetivo\n"
-        "- Mostre os resultados obtidos das ferramentas\n"
-        "- Não mostre erros internos, apenas resultados úteis"
+        "- SEMPRE mostre TODOS os resultados obtidos das ferramentas\n"
+        "- Quando listar ativos, mostre em formato de tabela ou lista numerada\n"
+        "- Se o usuário pedir N itens, mostre EXATAMENTE N itens (ou todos se houver menos)\n"
+        "- Formate listas grandes em tabelas markdown com colunas relevantes\n"
+        "- Não resuma ou omita resultados - mostre tudo que a ferramenta retornar\n"
+        "- Não mostre erros internos de ferramentas, apenas resultados úteis"
     )
 
     server_params = StreamableHTTPClientParams(
