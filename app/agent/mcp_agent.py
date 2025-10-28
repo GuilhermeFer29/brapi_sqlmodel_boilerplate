@@ -83,12 +83,15 @@ def build_agent() -> Agent:
         "- 'Fundos imobiliários disponíveis' → get_available_stocks(type='fund')\n\n"
         "FORMATO DE RESPOSTA:\n"
         "- Use markdown para formatar\n"
+        "- SEMPRE execute as ferramentas MCP para obter dados reais\n"
         "- SEMPRE mostre TODOS os resultados obtidos das ferramentas\n"
-        "- Quando listar ativos, mostre em formato de tabela ou lista numerada\n"
+        "- Quando listar ativos, mostre em formato de tabela markdown com colunas: Ticker | Nome | Setor (se aplicável)\n"
         "- Se o usuário pedir N itens, mostre EXATAMENTE N itens (ou todos se houver menos)\n"
         "- Formate listas grandes em tabelas markdown com colunas relevantes\n"
         "- Não resuma ou omita resultados - mostre tudo que a ferramenta retornar\n"
-        "- Não mostre erros internos de ferramentas, apenas resultados úteis"
+        "- Não faça suposições - sempre use as ferramentas para obter dados reais\n"
+        "- Não mostre erros internos de ferramentas, apenas resultados úteis\n"
+        "- Após executar a ferramenta, SEMPRE mostre a lista completa de resultados"
     )
 
     server_params = StreamableHTTPClientParams(
@@ -105,6 +108,7 @@ def build_agent() -> Agent:
         tools=[brapi_mcp],
         instructions=system_prompt,
         markdown=True,
+        show_tool_calls=True,  # Mostrar quais ferramentas estão sendo usadas
     )
     return agent
 
@@ -112,16 +116,26 @@ def build_agent() -> Agent:
 def run_sync(agent: Agent, message: str) -> str:
     """
     Versão síncrona para uso no Streamlit.
+    Executa o agente e retorna a resposta completa com resultados das ferramentas.
     """
     try:
-        # Use agent.run() for synchronous execution
-        result = agent.run(message)
+        # Use agent.run() for synchronous execution without streaming
+        result = agent.run(message, stream=False)
+        
         # Extract the content from the RunOutput object
         if hasattr(result, 'content'):
-            return str(result.content) if result.content is not None else "Nenhuma resposta disponível"
+            content = result.content
+            if content is not None:
+                return str(content)
+        
+        # Fallback para string representation
         return str(result) if result is not None else "Nenhuma resposta disponível"
     except Exception as e:
-        return f"Erro ao processar requisição: {str(e)}"
+        import traceback
+        error_msg = f"Erro ao processar requisição: {str(e)}"
+        print(f"❌ {error_msg}")
+        traceback.print_exc()
+        return error_msg
 
 
 # Alias for backward compatibility
