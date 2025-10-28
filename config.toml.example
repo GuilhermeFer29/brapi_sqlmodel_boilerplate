@@ -1,0 +1,39 @@
+# Configuração do Projeto - brapi SQLModel Boilerplate
+# Copie este arquivo para config.toml e preencha com seus valores
+
+[environment]
+env = "dev"  # dev, staging, production
+
+[brapi]
+# URLs da API brapi
+mcp_url = "https://brapi.dev/api/mcp/mcp"
+base_url = "https://brapi.dev"
+api_key = "sua_chave_api_aqui"  # Obtenha em https://brapi.dev/dashboard
+token = "seu_token_aqui"         # Mesmo valor da api_key
+
+[cache]
+# Configurações de TTL do cache (em segundos)
+quote_ttl_seconds = 1800        # 30 minutos - cotações de ações
+crypto_ttl_seconds = 3600       # 1 hora - preços de criptomoedas
+currency_ttl_seconds = 3600     # 1 hora - taxas de câmbio
+macro_ttl_seconds = 86400       # 24 horas - dados macroeconômicos
+
+[database]
+# Configurações de banco de dados
+redis_url = "redis://redis:6379/0"
+mysql_url = "mysql+asyncmy://brapi_user:brapi_pass@mysql:3306/brapi_db"
+
+# Para desenvolvimento local, use:
+# redis_url = "redis://localhost:6379/0"
+# mysql_url = "mysql+asyncmy://brapi_user:brapi_pass@localhost:3306/brapi_db"
+
+[llm]
+# Configurações do LLM (Gemini)
+gemini_api_key = "sua_chave_gemini_aqui"  # Obtenha em https://aistudio.google.com/apikey
+
+[backend]
+# Configurações do backend FastAPI
+base_url = "http://localhost:8000"
+
+# Para produção, use:
+# base_url = "https://seu-dominio.com"

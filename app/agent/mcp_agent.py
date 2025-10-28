@@ -8,20 +8,34 @@ from agno.models.google import Gemini
 
 __all__ = ["build_agent", "build_agent_sync", "run_sync"]
 
+# Tentar importar o config_loader, mas não falhar se não estiver disponível
+try:
+    from app.config_loader import config as app_config
+    USE_CONFIG_LOADER = True
+except ImportError:
+    USE_CONFIG_LOADER = False
+
 
 def build_agent() -> Agent:
     """
     Agente Agno usando Gemini 2.5 Flash + MCP brapi (remoto).
+    Suporta múltiplas fontes de configuração: Streamlit Secrets, TOML, .env
     """
-    brapi_mcp_url = os.getenv("BRAPI_MCP_URL", "https://brapi.dev/api/mcp/mcp")
-    brapi_token = os.getenv("BRAPI_API_KEY", "")
+    # Usar config_loader se disponível, caso contrário fallback para os.getenv
+    if USE_CONFIG_LOADER:
+        brapi_mcp_url = app_config.brapi.mcp_url
+        brapi_token = app_config.brapi.api_key
+        gemini_api_key = app_config.llm.gemini_api_key
+    else:
+        brapi_mcp_url = os.getenv("BRAPI_MCP_URL", "https://brapi.dev/api/mcp/mcp")
+        brapi_token = os.getenv("BRAPI_API_KEY", "")
+        gemini_api_key = os.getenv("GEMINI_API_KEY", "")
 
     if not brapi_token:
-        raise RuntimeError("BRAPI_API_KEY não configurado no ambiente (.env).")
+        raise RuntimeError("BRAPI_API_KEY não configurado. Configure via Streamlit Secrets, config.toml ou .env")
 
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
     if not gemini_api_key:
-        raise RuntimeError("GEMINI_API_KEY não configurado no ambiente (.env).")
+        raise RuntimeError("GEMINI_API_KEY não configurado. Configure via Streamlit Secrets, config.toml ou .env")
 
     model = Gemini(id="gemini-2.5-flash-lite-preview-09-2025", api_key=gemini_api_key)
 
