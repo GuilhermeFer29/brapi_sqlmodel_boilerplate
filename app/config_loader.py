@@ -169,7 +169,7 @@ def load_config() -> AppConfig:
                     raise ValueError("llm.gemini_api_key não configurado em secrets")
                 
                 config = AppConfig(
-                    environment=environment,
+                    env=environment,  # Usar 'env' ao invés de 'environment' (alias do Pydantic)
                     brapi=BrapiConfig(**brapi_dict),
                     cache=CacheConfig(**cache_dict) if cache_dict else CacheConfig(),
                     database=DatabaseConfig(**database_dict) if database_dict else DatabaseConfig(),
@@ -205,7 +205,7 @@ def load_config() -> AppConfig:
         # Criar instâncias dos modelos
         try:
             config = AppConfig(
-                environment=config_dict["environment"],
+                env=config_dict["environment"],
                 brapi=BrapiConfig(**config_dict["brapi"]),
                 cache=CacheConfig(**config_dict["cache"]),
                 database=DatabaseConfig(**config_dict["database"]),
