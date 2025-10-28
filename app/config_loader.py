@@ -106,39 +106,87 @@ def load_config() -> AppConfig:
     # Tentar carregar do Streamlit Secrets primeiro (para deploy no Streamlit Cloud)
     try:
         import streamlit as st
-        if hasattr(st, 'secrets') and len(st.secrets) > 0:
+        
+        # Debug: verificar se secrets existe e tem conteúdo
+        has_secrets = hasattr(st, 'secrets')
+        print(f"🔍 Streamlit detectado. Has secrets: {has_secrets}")
+        
+        if has_secrets:
+            try:
+                secrets_len = len(st.secrets)
+                print(f"🔍 Número de seções em secrets: {secrets_len}")
+                if secrets_len > 0:
+                    print(f"🔍 Seções disponíveis: {list(st.secrets.keys())}")
+            except Exception as e:
+                print(f"⚠️  Erro ao verificar secrets: {e}")
+                secrets_len = 0
+        else:
+            secrets_len = 0
+        
+        if has_secrets and secrets_len > 0:
             # Converter Streamlit secrets para dict normal
             def secrets_to_dict(section):
                 """Converte seção de secrets para dict Python normal"""
+                if not section:
+                    return {}
                 if hasattr(section, 'to_dict'):
                     return section.to_dict()
-                return {k: v for k, v in section.items()}
+                try:
+                    return {k: v for k, v in section.items()}
+                except:
+                    return {}
             
             try:
-                env_section = st.secrets.get("environment", {})
+                # Tentar carregar cada seção
+                env_section = st.secrets.get("environment", None)
                 environment = env_section.get("env", "production") if env_section else "production"
+                print(f"✅ Environment: {environment}")
                 
-                brapi_dict = secrets_to_dict(st.secrets.get("brapi", {}))
-                cache_dict = secrets_to_dict(st.secrets.get("cache", {}))
-                database_dict = secrets_to_dict(st.secrets.get("database", {}))
-                llm_dict = secrets_to_dict(st.secrets.get("llm", {}))
-                backend_dict = secrets_to_dict(st.secrets.get("backend", {}))
+                brapi_section = st.secrets.get("brapi", None)
+                brapi_dict = secrets_to_dict(brapi_section) if brapi_section else {}
+                print(f"🔍 brapi section keys: {list(brapi_dict.keys()) if brapi_dict else 'empty'}")
+                
+                cache_section = st.secrets.get("cache", None)
+                cache_dict = secrets_to_dict(cache_section) if cache_section else {}
+                
+                database_section = st.secrets.get("database", None)
+                database_dict = secrets_to_dict(database_section) if database_section else {}
+                
+                llm_section = st.secrets.get("llm", None)
+                llm_dict = secrets_to_dict(llm_section) if llm_section else {}
+                print(f"🔍 llm section keys: {list(llm_dict.keys()) if llm_dict else 'empty'}")
+                
+                backend_section = st.secrets.get("backend", None)
+                backend_dict = secrets_to_dict(backend_section) if backend_section else {}
+                
+                # Verificar se temos as chaves necessárias
+                if not brapi_dict or not brapi_dict.get("api_key"):
+                    print("⚠️  brapi.api_key não encontrado em secrets!")
+                    raise ValueError("brapi.api_key não configurado em secrets")
+                
+                if not llm_dict or not llm_dict.get("gemini_api_key"):
+                    print("⚠️  llm.gemini_api_key não encontrado em secrets!")
+                    raise ValueError("llm.gemini_api_key não configurado em secrets")
                 
                 config = AppConfig(
                     environment=environment,
-                    brapi=BrapiConfig(**brapi_dict) if brapi_dict else BrapiConfig(),
+                    brapi=BrapiConfig(**brapi_dict),
                     cache=CacheConfig(**cache_dict) if cache_dict else CacheConfig(),
                     database=DatabaseConfig(**database_dict) if database_dict else DatabaseConfig(),
-                    llm=LLMConfig(**llm_dict) if llm_dict else LLMConfig(),
+                    llm=LLMConfig(**llm_dict),
                     backend=BackendConfig(**backend_dict) if backend_dict else BackendConfig(),
                 )
                 print("✅ Configurações carregadas de Streamlit Secrets")
                 return config
             except Exception as e:
-                print(f"⚠️  Erro ao processar Streamlit Secrets: {e}")
+                print(f"❌ Erro ao processar Streamlit Secrets: {e}")
+                import traceback
+                traceback.print_exc()
                 print("   Tentando fallback para TOML/env...")
-    except (ImportError, AttributeError, FileNotFoundError) as e:
-        pass  # Streamlit não está disponível ou secrets não configurados
+    except ImportError:
+        print("ℹ️  Streamlit não está instalado, usando TOML/env")
+    except Exception as e:
+        print(f"⚠️  Erro ao importar Streamlit: {e}")
     
     # Tentar carregar do TOML
     toml_config = load_config_from_toml()
