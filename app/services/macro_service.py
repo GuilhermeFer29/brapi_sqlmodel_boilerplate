@@ -3,8 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.cache import get_redis
 from app.core.config import settings
 from app.services.brapi_client import BrapiClient
-from app.utils.key import make_cache_key
-from app.utils.json_serializer import json_serializer, normalize_for_json
+from app.services.utils.key import make_cache_key
+from app.services.utils.json_serializer import json_serializer, normalize_for_json
 from app.models import ApiCall, MacroPoint
 from datetime import datetime, timezone
 import json
@@ -113,6 +113,6 @@ async def get_prime_rate(session: AsyncSession, country: str) -> dict[str, Any]:
     return {"cached": False, "results": payload}
 
 async def _log_call(session: AsyncSession, endpoint: str, tickers: str | None, params: dict | None, cached: bool, status_code: int, response: dict | None):
-    rec = ApiCall(endpoint=endpoint, tickers=tickers, params=normalize_for_json(params), cached=cached, status_code=status_code, response=normalize_for_json(response))
+    rec = ApiCall(endpoint=endpoint, tickers=tickers, params=normalize_for_json(params) if params else None, cached=cached, status_code=status_code, response=normalize_for_json(response) if response else None)
     session.add(rec)
     await session.commit()

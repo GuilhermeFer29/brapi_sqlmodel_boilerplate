@@ -14,8 +14,8 @@ from app.core.config import settings
 from app.models import ApiCall, MacroPoint
 from app.services.brapi_client import BrapiClient
 from app.services.validation import try_validate
-from app.utils.key import make_cache_key
-from app.utils.json_serializer import json_serializer, normalize_for_json
+from app.services.utils.key import make_cache_key
+from app.services.utils.json_serializer import json_serializer, normalize_for_json
 
 
 # -------- utils --------
@@ -76,10 +76,10 @@ async def _log_call(
     rec = ApiCall(
         endpoint=endpoint,
         tickers=tickers,
-        params=normalize_for_json(params),
+        params=normalize_for_json(params) if params else None,
         cached=cached,
         status_code=status_code,
-        response=normalize_for_json(response),
+        response=normalize_for_json(response) if response else None,
     )
     session.add(rec)
     await session.commit()

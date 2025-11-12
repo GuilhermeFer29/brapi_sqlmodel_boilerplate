@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     env: str = Field(default="dev", alias="ENV")
     brapi_base_url: str = Field(default="https://brapi.dev", alias="BRAPI_BASE_URL")
     brapi_token: str | None = Field(default=None, alias="BRAPI_TOKEN")
+    plan_free: bool = Field(default=True, alias="PLAN_FREE")
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
     database_url: str = Field(default="mysql+asyncmy://user:pass@localhost:3306/db", alias="DATABASE_URL")
     cache_ttl_quote_seconds: int = Field(default=1800, alias="CACHE_TTL_QUOTE_SECONDS")
@@ -17,3 +18,5 @@ class Settings(BaseSettings):
         extra = "ignore"
 
 settings = Settings()
+
+PLAN_FREE = settings.plan_free

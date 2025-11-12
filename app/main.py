@@ -9,6 +9,8 @@ from app.api.routes.macro import router as macro_router
 from app.api.routes.available import router as available_router
 from app.api.routes.history import router as history_router
 from app.api.routes.prime_rate_scan import router as prime_rate_scan_router
+from app.api.routes.catalog import router as catalog_router
+from app.api.routes.ohlcv import router as ohlcv_router
 app = FastAPI(title="brapi Boilerplate (SQLModel + SDK + Cache)")
 
 async def wait_for(predicate, name: str, attempts: int = 90, delay: int = 2):
@@ -31,6 +33,8 @@ app.include_router(macro_router)
 app.include_router(available_router)
 app.include_router(history_router)
 app.include_router(prime_rate_scan_router)
+app.include_router(catalog_router)
+app.include_router(ohlcv_router)
 
 @app.get("/health")
 async def health():

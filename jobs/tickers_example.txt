@@ -1,0 +1,43 @@
+# Tickers populares para teste e demonstração
+# Ações (4 gratuitas no plano free)
+PETR4
+VALE3
+MGLU3
+ITUB4
+
+# Outras ações populares
+WEGE3
+BBAS3
+ABEV3
+JBSS3
+LREN3
+RADL3
+GGBR4
+CSNA3
+B3SA3
+SUZB3
+
+# Fundos Imobiliários (FIIs)
+HGLG11
+MXRF11
+HGCR11
+VISC11
+BCFF11
+RBRP11
+XPLG11
+KNRI11
+HGRE11
+FIIB11
+
+# ETFs
+BOVA11
+SMAC11
+DIVO11
+IVVB11
+
+# BDRs
+AAPL34
+MSFT34
+GOOGL34
+TSLA34
+NVDA34
