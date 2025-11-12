@@ -12,6 +12,7 @@ import asyncio
 import sys
 import os
 from pathlib import Path
+from typing import Optional
 
 # Adicionar projeto ao path
 project_root = Path(__file__).parent.parent
@@ -20,9 +21,9 @@ sys.path.insert(0, str(project_root))
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from sqlmodel import SQLModel, select
-from app.db.session import AsyncSessionLocal, engine, check_db
+from app.db.session import AsyncSessionLocal, engine
 from app.services.catalog_service import sync_assets
-from app.services.ohlcv_service import backfill_ohlcv
+from app.services.quote_service import fetch_and_enrich_asset
 from app.models import Asset
 from datetime import datetime
 
@@ -57,67 +58,109 @@ async def populate_catalog():
     """Popula o catálogo completo."""
     print("\n📊 Populando catálogo de ativos...")
 
-    # Sincronizar todos os tipos de ativos
+    # Sincronizar todos os tipos de ativos suportados no plano free
     asset_types = ["stock", "fund", "bdr", "etf", "index"]
     total_stats = {"processed": 0, "inserted": 0, "updated": 0, "errors": 0, "pages": 0}
-    
+
     async with AsyncSessionLocal() as session:
         for asset_type in asset_types:
             print(f"\n   🔄 Sincronizando {asset_type}...")
-            
+
             try:
-                print(f"   -> Iniciando {asset_type}...")
                 stats = await sync_assets(session, asset_type, 200)
-                
-                print(f"      ✅ {asset_type}: {stats['processed']} processados, {stats['inserted']} inseridos")
-                
-                # Acumular estatísticas
+                print(
+                    "      ✅ {t}: {p} processados, {i} inseridos, {u} atualizados".format(
+                        t=asset_type.upper(), p=stats["processed"], i=stats["inserted"], u=stats["updated"]
+                    )
+                )
+
                 for key in total_stats:
                     total_stats[key] += stats[key]
-                    
+
             except Exception as e:
                 print(f"      ❌ Erro ao sincronizar {asset_type}: {e}")
                 total_stats["errors"] += 1
-    
-    print(f"\n📈 Catálogo completo:")
+
+    print("\n📈 Catálogo completo:")
     print(f"   Total processados: {total_stats['processed']}")
     print(f"   Total inseridos: {total_stats['inserted']}")
+    print(f"   Total atualizados: {total_stats['updated']}")
     print(f"   Total erros: {total_stats['errors']}")
-    
+
     return total_stats["errors"] == 0
 
-async def populate_historical_data():
-    """Popula dados históricos para todos os ativos cadastrados."""
+async def populate_historical_data(range_period: str = "3mo", interval: str = "1d", max_assets: Optional[int] = None):
+    """Popula dados históricos, dividendos e TTM para os ativos do catálogo."""
     async with AsyncSessionLocal() as session:
         try:
             tickers_result = await session.execute(
-                select(Asset.ticker).where(Asset.type.in_(["stock", "fund", "etf", "bdr"])).order_by(Asset.ticker)
+                select(Asset.ticker)
+                .where(Asset.type.in_(["stock", "fund", "etf", "bdr"]))
+                .order_by(Asset.ticker)
             )
             all_tickers = [row[0] for row in tickers_result.fetchall() if row[0]]
-            print(f"\n📈 Populando dados históricos para {len(all_tickers)} ativos (stocks, funds, ETFs, BDRs)...")
+
+            if max_assets:
+                all_tickers = all_tickers[:max_assets]
+
+            print(f"\n📈 Enriquecendo dados históricos para {len(all_tickers)} ativos...")
             if not all_tickers:
-                print("⚠️  Nenhum ativo encontrado no catálogo. Pulei o backfill.")
+                print("⚠️  Nenhum ativo encontrado no catálogo. Pulei o enriquecimento.")
                 return True
 
-            stats = await backfill_ohlcv(
-                session=session,
-                tickers=all_tickers,
-                range="3mo",
-                interval="1d",
-                max_concurrency=1  # Conservador para evitar rate limit
-            )
-            print(f"   -> Processamento concluído: {stats['processed']} / {stats['total_requested']} tickers")
-            
-            print(f"✅ Dados históricos:")
-            print(f"   Processados: {stats['processed']}")
-            print(f"   Inseridos: {stats['inserted']}")
-            print(f"   Atualizados: {stats['updated']}")
-            print(f"   Erros: {stats['errors']}")
-            
-            return stats["errors"] == 0
-            
+            processed = 0
+            errors = 0
+            total_ohlcv = 0
+            total_dividends = 0
+            total_ttm = 0
+
+            for ticker in all_tickers:
+                try:
+                    result = await fetch_and_enrich_asset(
+                        ticker,
+                        range=range_period,
+                        interval=interval,
+                        dividends=True,
+                        fundamental=True,
+                        modules=["financialData"],
+                        plan="free",
+                    )
+
+                    total_ohlcv += result.get("ohlcv_rows_upserted", 0)
+                    total_dividends += result.get("dividends_rows_upserted", 0)
+                    if result.get("ttm_updated"):
+                        total_ttm += 1
+
+                    snapshot = result.get("snapshot", {})
+                    missing_fields = [field for field in ("sector", "segment", "isin") if not snapshot.get(field)]
+                    if missing_fields:
+                        print(
+                            f"   ⚠️  {ticker}: campos ausentes no snapshot: {', '.join(missing_fields)}"
+                        )
+
+                    processed += 1
+                    if processed % 25 == 0:
+                        print(
+                            f"   -> Progresso: {processed}/{len(all_tickers)} | OHLCV {total_ohlcv} | Dividends {total_dividends} | TTM atualizados {total_ttm}"
+                        )
+
+                except Exception as e:
+                    errors += 1
+                    print(f"   ❌ {ticker}: erro durante enriquecimento ({e})")
+
+                    await asyncio.sleep(0.5)
+
+            print("\n✅ Enriquecimento concluído:")
+            print(f"   Ativos processados: {processed}/{len(all_tickers)}")
+            print(f"   Total OHLCV upsertados: {total_ohlcv}")
+            print(f"   Total dividendos upsertados: {total_dividends}")
+            print(f"   TTM atualizados: {total_ttm}")
+            print(f"   Erros: {errors}")
+
+            return errors == 0
+
         except Exception as e:
-            print(f"❌ Erro no backfill: {e}")
+            print(f"❌ Erro no enriquecimento: {e}")
             return False
 
 async def verify_population():

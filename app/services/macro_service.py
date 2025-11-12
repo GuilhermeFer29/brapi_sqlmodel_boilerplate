@@ -4,7 +4,7 @@ from app.core.cache import get_redis
 from app.core.config import settings
 from app.services.brapi_client import BrapiClient
 from app.services.utils.key import make_cache_key
-from app.services.utils.json_serializer import json_serializer, normalize_for_json
+from app.services.utils.json_serializer import json_serializer, normalize_for_json, normalize_numeric
 from app.models import ApiCall, MacroPoint
 from datetime import datetime, timezone
 import json
@@ -33,7 +33,7 @@ def _extract_macro(series: str, country: str, payload: dict) -> list[MacroPoint]
                 series=series,
                 country=country,
                 ref_date=_parse_date(item.get("date") or item.get("ref") or item.get("time")),
-                value=item.get("value") or item.get("val") or item.get("rate"),
+                value=normalize_numeric(item.get("value") or item.get("val") or item.get("rate")),
                 raw=normalize_for_json(item),  # Normaliza datetime para JSON
             ))
     return out

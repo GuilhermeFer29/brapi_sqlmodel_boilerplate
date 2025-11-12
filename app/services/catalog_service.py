@@ -48,6 +48,14 @@ def _normalize_asset_type(asset_type: Optional[str]) -> Optional[str]:
     
     return type_mapping.get(type_lower, type_lower)
 
+def _has_value(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    return True
+
+
 def _extract_assets_from_list(payload: dict, default_type: Optional[str] = None) -> List[Asset]:
     """Extrai assets da resposta da API /available ou /quote/list."""
     results = payload.get("stocks") or payload.get("results") or []
@@ -73,7 +81,11 @@ def _extract_assets_from_list(payload: dict, default_type: Optional[str] = None)
                 name=item.get("name") or item.get("shortName"),
                 type=_normalize_asset_type(item.get("type") or default_type),
                 sector=item.get("sector") or item.get("category"),
-                segment=item.get("sector"),  # fallback
+                segment=
+                    item.get("segment")
+                    or item.get("industry")
+                    or item.get("sector")
+                    or item.get("category"),
                 isin=item.get("isin"),
                 logo_url=item.get("logourl") or item.get("logoUrl"),
                 raw=normalize_for_json(item),
@@ -100,17 +112,27 @@ def _needs_enrichment(asset: Asset) -> bool:
     return False
 
 async def _enrich_asset(asset: Asset, client: BrapiClient) -> None:
-    """Busca detalhes adicionais do ativo via endpoint /quote."""
+    """Busca detalhes adicionais do ativo via endpoint /quote com retry resiliente (Stage 4)."""
     if not _needs_enrichment(asset):
         return
-    try:
-        # Usar apenas fundamental=true para obter dados básicos do plano gratuito
-        response = await client.quote([asset.ticker], {"fundamental": "true"})
-    except NotFoundError:
-        return
-    except Exception as e:
-        print(f"Não foi possível enriquecer {asset.ticker}: {e}")
-        return
+    max_attempts = 3
+    base_delay = 0.5
+    for attempt in range(max_attempts):
+        try:
+            # Usar apenas fundamental=true para obter dados básicos do plano gratuito
+            response = await client.quote([asset.ticker], {"fundamental": "true"})
+            break
+        except NotFoundError:
+            # Asset not found – nothing to enrich
+            return
+        except Exception as e:
+            if attempt == max_attempts - 1:
+                print(f"Failed to enrich {asset.ticker} after {max_attempts} attempts: {e}")
+                return
+            # Exponential backoff with jitter
+            delay = base_delay * (2 ** attempt) + random.random()
+            await asyncio.sleep(delay)
+    # Process response
     items = (response.get("results") or response.get("stocks") or []) if isinstance(response, dict) else []
     if not items:
         return
@@ -118,7 +140,12 @@ async def _enrich_asset(asset: Asset, client: BrapiClient) -> None:
     
     # Extrair dados básicos disponíveis no plano gratuito
     asset.name = info.get("longName") or info.get("shortName") or asset.name
-    asset.type = _normalize_asset_type(info.get("type")) or asset.type
+
+    new_type = _normalize_asset_type(info.get("type"))
+    if _has_value(new_type):
+        if not _has_value(asset.type) or new_type == asset.type:
+            asset.type = new_type
+
     asset.sector = info.get("sector") or asset.sector
     asset.segment = info.get("industry") or info.get("sector") or asset.segment
     asset.isin = info.get("isin") or info.get("isinCode") or asset.isin
@@ -135,16 +162,10 @@ async def _enrich_asset(asset: Asset, client: BrapiClient) -> None:
         "fiftyTwoWeekRange", "fiftyTwoWeekLow", "fiftyTwoWeekHigh", 
         "symbol", "logourl", "priceEarnings", "earningsPerShare"
     ]
-    
-    # Criar raw apenas com campos essenciais
-    essential_raw = {}
-    for field in essential_fields:
-        if field in info:
-            essential_raw[field] = info[field]
-    
+    essential_raw = {field: info[field] for field in essential_fields if field in info}
     asset.raw = essential_raw
     asset.updated_at = utcnow()
-    # Aguardar levemente para respeitar rate limits do plano gratuito
+    # Pequena pausa para respeitar limites de taxa do plano gratuito
     await asyncio.sleep(0.1)
 
 async def _log_call(session: AsyncSession, *, endpoint: str, params: dict | None, cached: bool, status_code: int, response: dict | None = None, error: str | None = None, count: int = 0):
@@ -190,15 +211,20 @@ async def sync_assets(session: AsyncSession, asset_type: str, limit: int = 100) 
             params = {
                 "page": page,
                 "type": asset_type,
+                "pageSize": limit,
             }
             try:
                 print(f"      -> Página {page}: solicitando catálogo ({asset_type})...", flush=True)
-                payload = await client.available(params)
+                payload = await client.quote_list(
+                    type=asset_type,
+                    page=page,
+                    page_size=limit,
+                )
                 stocks = payload.get("stocks") or payload.get("results") or []
                 print(f"      -> Página {page}: recebidos {len(stocks)} símbolos", flush=True)
                 await _log_call(
                     session,
-                    endpoint="available",
+                    endpoint="quote_list",
                     params=params,
                     cached=False,
                     status_code=200,
@@ -211,27 +237,37 @@ async def sync_assets(session: AsyncSession, asset_type: str, limit: int = 100) 
                     break
                 for asset in assets:
                     try:
+                        # Upsert using session.merge which inserts if not exists or updates existing row
+                        # Ensure we keep existing fields unless new non-null values are provided
                         existing = await session.execute(select(Asset).where(Asset.ticker == asset.ticker))
                         existing_asset = existing.scalar_one_or_none()
                         if existing_asset:
-                            existing_asset.name = asset.name
-                            existing_asset.type = asset.type
-                            existing_asset.sector = asset.sector
-                            existing_asset.segment = asset.segment
-                            existing_asset.isin = asset.isin
-                            existing_asset.logo_url = asset.logo_url
-                            existing_asset.raw = asset.raw
+                            # Update mutable fields only when new data is present
+                            if _has_value(asset.name):
+                                existing_asset.name = asset.name
+                            if _has_value(asset.type):
+                                existing_asset.type = asset.type
+                            if _has_value(asset.sector):
+                                existing_asset.sector = asset.sector
+                            if _has_value(asset.segment):
+                                existing_asset.segment = asset.segment
+                            if _has_value(asset.isin):
+                                existing_asset.isin = asset.isin
+                            if _has_value(asset.logo_url):
+                                existing_asset.logo_url = asset.logo_url
+                            if isinstance(asset.raw, dict) and asset.raw:
+                                existing_asset.raw = asset.raw
                             existing_asset.updated_at = utcnow()
+                            session.merge(existing_asset)
                             stats["updated"] += 1
-                            target_asset = existing_asset
                         else:
-                            target_asset = asset
-                            await _enrich_asset(target_asset, client)
-                            session.add(target_asset)
+                            # New asset – enrich if needed and add
+                            await _enrich_asset(asset, client)
+                            session.add(asset)
                             stats["inserted"] += 1
-                        
-                        if _needs_enrichment(target_asset):
-                            await _enrich_asset(target_asset, client)
+                        # Ensure asset has all enrichment data
+                        if _needs_enrichment(asset):
+                            await _enrich_asset(asset, client)
                         stats["processed"] += 1
                         if stats["processed"] % 100 == 0:
                             print(
@@ -247,8 +283,11 @@ async def sync_assets(session: AsyncSession, asset_type: str, limit: int = 100) 
                     f"      -> Página {page} concluída (acumulado: {stats['processed']} processados)",
                     flush=True,
                 )
-                pagination = payload.get("pagination", {})
-                has_more = bool(pagination.get("hasMore"))
+                current_page = payload.get("currentPage")
+                total_pages = payload.get("totalPages")
+                has_more = bool(payload.get("hasNextPage"))
+                if has_more is None and current_page is not None and total_pages is not None:
+                    has_more = current_page < total_pages
                 if has_more:
                     page += 1
                     await asyncio.sleep(0.5)

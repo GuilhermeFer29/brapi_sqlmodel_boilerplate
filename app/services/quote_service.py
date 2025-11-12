@@ -1,17 +1,18 @@
 from typing import Any, List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
+from sqlmodel import select, delete
 
-from app.core.cache import get_redis
+from app.core.cache import get_redis, cleanup_cache_keys
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models import ApiCall, QuoteSnapshot, QuoteOHLCV, Dividend, FinancialsTTM
 from app.services.brapi_client import BrapiClient
 from app.services.utils.key import make_cache_key
-from app.services.utils.json_serializer import json_serializer, normalize_for_json
+from app.services.utils.json_serializer import json_serializer, normalize_for_json, normalize_numeric, normalize_timestamp
 from app.services.validation import try_validate
 from app.services.ohlcv_service import _extract_ohlcv_from_quote
 from app.services.utils.json_serializer import normalize_for_json as normalize
@@ -44,11 +45,11 @@ def _extract_snapshots(payload: dict) -> list[QuoteSnapshot]:
             ticker=item.get("symbol") or item.get("ticker") or "",
             short_name=item.get("shortName"),
             currency=item.get("currency"),
-            regular_market_price=item.get("regularMarketPrice"),
-            previous_close=item.get("regularMarketPreviousClose"),
-            market_change=item.get("regularMarketChange"),
-            market_change_percent=item.get("regularMarketChangePercent"),
-            regular_market_time=_ts_to_datetime(item.get("regularMarketTime")),
+            regular_market_price=normalize_numeric(item.get("regularMarketPrice")),
+            previous_close=normalize_numeric(item.get("regularMarketPreviousClose")),
+            market_change=normalize_numeric(item.get("regularMarketChange")),
+            market_change_percent=normalize_numeric(item.get("regularMarketChangePercent")),
+            regular_market_time=normalize_timestamp(item.get("regularMarketTime")),
             raw=normalize_for_json(item),  # Normaliza datetime para JSON
         ))
     return out
@@ -71,6 +72,10 @@ async def get_quote(session: AsyncSession, tickers: str, params: dict[str, Any])
     await r.set(key, json.dumps(payload, separators=(",", ":"), default=json_serializer), ex=ttl)
 
     ok, obj, err = try_validate("app.openapi_models:QuoteResponse", payload)
+    if not ok:
+        # Validation failed – log and return error response
+        await _log_call(session, endpoint="quote", tickers=tickers, params=params, cached=False, status_code=500, response={"validation_error": err})
+        return {"cached": False, "error": True, "status": 500, "message": "Response validation failed", "details": err}
 
     await _log_call(session, endpoint="quote", tickers=tickers, params=params, cached=False, status_code=200, response=payload)
 
@@ -80,6 +85,35 @@ async def get_quote(session: AsyncSession, tickers: str, params: dict[str, Any])
         await session.commit()
 
     return {"cached": False, "results": payload.get("results") or []}
+
+
+async def cleanup_quote_artifacts(session: AsyncSession) -> dict[str, int]:
+    """Remove snapshots e logs antigos relacionados às cotações."""
+    now = datetime.now(timezone.utc)
+    stats = {
+        "snapshots_removed": 0,
+        "api_calls_removed": 0,
+        "cache_keys_removed": 0,
+    }
+
+    cutoff_snapshots = now - timedelta(days=settings.retention_days_snapshots)
+    snapshot_stmt = delete(QuoteSnapshot).where(QuoteSnapshot.created_at < cutoff_snapshots)
+    snap_result = await session.execute(snapshot_stmt)
+    stats["snapshots_removed"] = snap_result.rowcount or 0
+
+    cutoff_logs = now - timedelta(days=settings.retention_days_api_calls)
+    api_stmt = (
+        delete(ApiCall)
+        .where(ApiCall.endpoint == "quote")
+        .where(ApiCall.created_at < cutoff_logs)
+    )
+    api_result = await session.execute(api_stmt)
+    stats["api_calls_removed"] = api_result.rowcount or 0
+
+    await session.commit()
+
+    stats["cache_keys_removed"] = await cleanup_cache_keys(["quote:*"])
+    return stats
 
 
 def _extract_historical(payload: dict, symbol: str) -> List[QuoteOHLCV]:
@@ -154,16 +188,34 @@ async def fetch_and_enrich_asset(
     print(f"📡 Buscando dados para {symbol} (range={range}, interval={interval})...")
     
     client = BrapiClient()
-    response = await client.quote(
-        [symbol],
-        params=None,
-        range=range,
-        interval=interval,
-        dividends=dividends,
-        fundamental=fundamental,
-        modules=modules,
-        plan=plan,
-    )
+    try:
+        response = await client.quote(
+            [symbol],
+            params=None,
+            range=range,
+            interval=interval,
+            dividends=dividends,
+            fundamental=fundamental,
+            modules=modules,
+            plan=plan,
+        )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code in {401, 403}:
+            print(
+                f"⚠️  Sem acesso a dados fundamentalistas para {symbol}. Tentando fallback sem fundamental/modules..."
+            )
+            response = await client.quote(
+                [symbol],
+                params=None,
+                range=range,
+                interval=interval,
+                dividends=dividends,
+                fundamental=False,
+                modules=None,
+                plan=plan,
+            )
+        else:
+            raise
 
     snapshot_items = _extract_snapshots(response)
     
@@ -178,6 +230,8 @@ async def fetch_and_enrich_asset(
             "regularMarketChange", "regularMarketChangePercent",
             "regularMarketTime", "regularMarketDayHigh", "regularMarketDayLow",
             "regularMarketVolume", "marketCap", "priceEarnings",
+            "sector", "industry", "segment", "category",
+            "isin", "isinCode", "logoUrl", "logourl",
         ]
         for field in essential_fields:
             if field in raw_data:

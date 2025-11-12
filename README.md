@@ -6,7 +6,7 @@ API FastAPI com SQLModel e Redis para integração com dados financeiros da [bra
 
 - **Catálogo de Ativos**: Organização por setor/tipo (stocks, funds, BDRs, ETFs)
 - **Dados Históricos**: Séries OHLCV com até 3 meses de histórico (plano free)
-- **Cache Redis**: Cache inteligente com TTL configurável
+- **Cache Redis**: Cache inteligente com TTL configurável e rotinas de limpeza assíncronas
 - **Rate Limiting**: Respeita limites do plano free (1 ticker/requisição)
 - **Observabilidade**: Auditoria completa de chamadas via tabela `ApiCall`
 - **ETL Jobs**: Scripts de sincronização automatizados
@@ -173,6 +173,35 @@ POST /api/ohlcv/update?tickers=PETR4,VALE3&concurrency=3
 
 ## 🔄 Jobs ETL
 
+### Rotinas de Limpeza
+
+As rotinas abaixo ajudam a manter o banco e o cache enxutos. Execute-as periodicamente (cron, Airflow, etc.) usando um evento assíncrono:
+
+```bash
+python - <<'PY'
+import asyncio
+from app.db.session import AsyncSessionLocal
+from app.services.quote_service import cleanup_quote_artifacts
+from app.services.crypto_service import cleanup_crypto_artifacts
+from app.services.currency_service import cleanup_currency_artifacts
+
+async def main():
+    async with AsyncSessionLocal() as session:
+        quote_stats = await cleanup_quote_artifacts(session)
+        crypto_stats = await cleanup_crypto_artifacts(session)
+        currency_stats = await cleanup_currency_artifacts(session)
+    print({
+        "quote": quote_stats,
+        "crypto": crypto_stats,
+        "currency": currency_stats,
+    })
+
+asyncio.run(main())
+PY
+```
+
+> Dica: os padrões de chave incluem um trecho humano (`quote:PETR4:...`), facilitando inspeções manuais no Redis.
+
 ### Sincronizar Catálogo
 
 ```bash
@@ -219,6 +248,12 @@ python jobs/update_daily.py --dry-run
 ```
 
 ## 🧪 Testes
+
+### Ambientes recomendados
+
+- **Local isolado**: exporte `ENV=test` e utilize um banco dedicado (`DATABASE_URL=mysql+asyncmy://.../brapi_test`).
+- **Docker**: suba apenas MySQL/Redis (`docker-compose up -d mysql redis`) e use o mesmo comando de testes.
+- **CI**: configure variáveis de retenção (veja abaixo) para garantir que as rotinas de limpeza sejam cobertas.
 
 ```bash
 # Instalar dependências de teste
@@ -267,8 +302,16 @@ REDIS_URL=redis://localhost:6379/0
 
 # TTL Cache (segundos)
 CACHE_TTL_QUOTE_SECONDS=1800
-CACHE_TTL_CATALOG_SECONDS=300
+CACHE_TTL_CURRENCY_SECONDS=3600
 CACHE_TTL_OHLCV_SECONDS=30
+
+# Retenção (dias)
+RETENTION_DAYS_SNAPSHOTS=30
+RETENTION_DAYS_CRYPTO=30
+RETENTION_DAYS_CURRENCY=30
+RETENTION_DAYS_MACRO=365
+RETENTION_DAYS_OHLCV=730
+RETENTION_DAYS_API_CALLS=14
 ```
 
 ### Configuração de Rate Limiting

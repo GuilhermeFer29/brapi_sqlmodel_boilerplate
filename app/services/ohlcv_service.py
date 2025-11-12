@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.services.brapi_client import BrapiClient
 from brapi import NotFoundError
 from app.services.utils.key import make_cache_key
-from app.services.utils.json_serializer import json_serializer, normalize_for_json
+from app.services.utils.json_serializer import json_serializer, normalize_for_json, normalize_numeric
 from app.models import ApiCall, Asset, QuoteOHLCV
 from datetime import datetime, timezone, timedelta
 import json
@@ -48,12 +48,12 @@ def _extract_ohlcv_from_quote(payload: dict, ticker: str) -> List[QuoteOHLCV]:
             ohlcv = QuoteOHLCV(
                 ticker=ticker.upper().strip(),
                 date=date,
-                open=data_point.get("open"),
-                high=data_point.get("high"),
-                low=data_point.get("low"),
-                close=data_point.get("close"),
-                volume=data_point.get("volume"),
-                adj_close=data_point.get("adjClose"),
+                open=normalize_numeric(data_point.get("open")),
+                high=normalize_numeric(data_point.get("high")),
+                low=normalize_numeric(data_point.get("low")),
+                close=normalize_numeric(data_point.get("close")),
+                volume=normalize_numeric(data_point.get("volume")),
+                adj_close=normalize_numeric(data_point.get("adjClose")),
                 raw=normalize_for_json(data_point)
             )
             ohlcv_list.append(ohlcv)

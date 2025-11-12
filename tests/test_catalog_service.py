@@ -15,7 +15,81 @@ from app.services.catalog_service import (
     _normalize_asset_type,
     _extract_assets_from_list
 )
+from app.services.quote_service import cleanup_quote_artifacts
+from app.services.crypto_service import cleanup_crypto_artifacts
+from app.services.currency_service import cleanup_currency_artifacts
+from app.services.utils.key import make_cache_key
+from app.core.config import settings
 from app.models import Asset
+
+
+class TestMaintenanceUtilities:
+    """Testes para utilitários de manutenção e limpeza."""
+
+    def test_make_cache_key_contains_human_segment(self):
+        key = make_cache_key("quote", "PETR4", {"range": "3mo"}, "1d")
+        assert key.startswith("quote:")
+        parts = key.split(":")
+        assert len(parts) >= 3
+        digest = parts[-1]
+        assert len(digest) == 16
+
+    @pytest.mark.asyncio
+    async def test_cleanup_quote_artifacts(self):
+        session = AsyncMock(spec=AsyncSession)
+        session.execute = AsyncMock(side_effect=[MagicMock(rowcount=5), MagicMock(rowcount=2)])
+        session.commit = AsyncMock()
+
+        with patch.object(settings, "retention_days_snapshots", 1), patch.object(settings, "retention_days_api_calls", 1), patch(
+            "app.services.quote_service.cleanup_cache_keys", new=AsyncMock(return_value=4)
+        ) as mock_cleanup:
+            stats = await cleanup_quote_artifacts(session)
+
+        assert stats == {
+            "snapshots_removed": 5,
+            "api_calls_removed": 2,
+            "cache_keys_removed": 4,
+        }
+        session.commit.assert_awaited_once()
+        mock_cleanup.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_crypto_artifacts(self):
+        session = AsyncMock(spec=AsyncSession)
+        session.execute = AsyncMock(side_effect=[MagicMock(rowcount=3), MagicMock(rowcount=1)])
+        session.commit = AsyncMock()
+
+        with patch.object(settings, "retention_days_crypto", 1), patch.object(settings, "retention_days_api_calls", 1), patch(
+            "app.services.crypto_service.cleanup_cache_keys", new=AsyncMock(return_value=6)
+        ) as mock_cleanup:
+            stats = await cleanup_crypto_artifacts(session)
+
+        assert stats == {
+            "snapshots_removed": 3,
+            "api_calls_removed": 1,
+            "cache_keys_removed": 6,
+        }
+        session.commit.assert_awaited_once()
+        mock_cleanup.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_currency_artifacts(self):
+        session = AsyncMock(spec=AsyncSession)
+        session.execute = AsyncMock(side_effect=[MagicMock(rowcount=4), MagicMock(rowcount=2)])
+        session.commit = AsyncMock()
+
+        with patch.object(settings, "retention_days_currency", 1), patch.object(settings, "retention_days_api_calls", 1), patch(
+            "app.services.currency_service.cleanup_cache_keys", new=AsyncMock(return_value=5)
+        ) as mock_cleanup:
+            stats = await cleanup_currency_artifacts(session)
+
+        assert stats == {
+            "snapshots_removed": 4,
+            "api_calls_removed": 2,
+            "cache_keys_removed": 5,
+        }
+        session.commit.assert_awaited_once()
+        mock_cleanup.assert_awaited_once()
 
 
 class TestAssetTypeNormalization:

@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     cache_ttl_crypto_seconds: int = Field(default=3600, alias="CACHE_TTL_CRYPTO_SECONDS")
     cache_ttl_currency_seconds: int = Field(default=3600, alias="CACHE_TTL_CURRENCY_SECONDS")
     cache_ttl_macro_seconds: int = Field(default=86400, alias="CACHE_TTL_MACRO_SECONDS")
+    retention_days_snapshots: int = Field(default=30, alias="RETENTION_DAYS_SNAPSHOTS")
+    retention_days_crypto: int = Field(default=30, alias="RETENTION_DAYS_CRYPTO")
+    retention_days_currency: int = Field(default=30, alias="RETENTION_DAYS_CURRENCY")
+    retention_days_macro: int = Field(default=365, alias="RETENTION_DAYS_MACRO")
+    retention_days_ohlcv: int = Field(default=730, alias="RETENTION_DAYS_OHLCV")
+    retention_days_api_calls: int = Field(default=14, alias="RETENTION_DAYS_API_CALLS")
 
     class Config:
         env_file = ".env"

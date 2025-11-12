@@ -1,6 +1,6 @@
 """Utilitários para serialização JSON com suporte a datetime."""
-from datetime import datetime
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Optional
 import json
 
 
@@ -12,17 +12,75 @@ def json_serializer(obj):
     objetos que não são nativamente serializáveis em JSON.
     
     Args:
-        obj: Objeto a ser serializado
-        
+    - obj: Objeto a ser serializado
+    
     Returns:
-        String ISO 8601 se for datetime
-        
+    - String ISO 8601 se for datetime
+    
     Raises:
-        TypeError: Se o objeto não for serializável
+    - TypeError: Se o objeto não for serializável
     """
     if isinstance(obj, datetime):
         return obj.isoformat()
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
+# ---------------------------------------------------------------------------
+# Normalization helpers used across services (Stage 3)
+# ---------------------------------------------------------------------------
+
+def normalize_numeric(value: Any) -> Any:
+    """Converte valores numéricos que chegam como string para ``int``/``float``.
+
+    - ``None`` ou strings vazias retornam ``None``.
+    - Se a conversão falhar, ``None`` é retornado para evitar "false zeros".
+    """
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            # Prefer int when possible
+            if stripped.isdigit():
+                return int(stripped)
+            return float(stripped.replace(",", "."))
+        except ValueError:
+            return None
+    return None
+
+def normalize_timestamp(ts: Any) -> Optional[str]:
+    """Normaliza timestamps para ISO‑8601 strings.
+
+    Aceita ``datetime`` (já com tzinfo ou assume UTC), timestamps em segundos
+    (int/float) ou strings ISO. Retorna ``None`` quando não for possível
+    interpretar.
+    """
+    if ts is None:
+        return None
+    if isinstance(ts, datetime):
+        return ts.isoformat() if ts.tzinfo else ts.replace(tzinfo=timezone.utc).isoformat()
+    # epoch seconds
+    if isinstance(ts, (int, float)):
+        try:
+            return datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat()
+        except Exception:
+            return None
+    if isinstance(ts, str):
+        cleaned = ts.strip()
+        if not cleaned:
+            return None
+        # handle trailing Z
+        if cleaned.endswith("Z"):
+            cleaned = cleaned[:-1] + "+00:00"
+        try:
+            return datetime.fromisoformat(cleaned).isoformat()
+        except Exception:
+            return None
+    return None
 
 
 def normalize_for_json(data: Any) -> Any:
