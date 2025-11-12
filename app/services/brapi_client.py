@@ -55,6 +55,8 @@ class BrapiClient:
         headers: dict[str, str] = {}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
+        headers.setdefault("Accept", "application/json")
+        headers.setdefault("Accept-Encoding", "gzip, deflate")
         return headers
 
     async def _request_json(
@@ -245,7 +247,7 @@ class BrapiClient:
         if page is not None:
             params["page"] = page
         if page_size is not None:
-            params["pageSize"] = page_size
+            params["limit"] = page_size
         return await self._request_json(
             "/api/quote/list",
             params=params,

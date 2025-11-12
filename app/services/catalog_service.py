@@ -195,6 +195,12 @@ async def sync_assets(session: AsyncSession, asset_type: str, limit: int = 100) 
         Dict com estatísticas da sincronização
     """
     client = BrapiClient()
+    valid_types = {"stock", "fund", "bdr"}
+    asset_type_normalized = (asset_type or "").strip().lower()
+    if asset_type_normalized not in valid_types:
+        raise ValueError(
+            "Tipo de ativo inválido para o plano gratuito. Use: stock, fund ou bdr."
+        )
     stats = {
         "processed": 0,
         "inserted": 0,
@@ -210,13 +216,13 @@ async def sync_assets(session: AsyncSession, asset_type: str, limit: int = 100) 
         while has_more:
             params = {
                 "page": page,
-                "type": asset_type,
-                "pageSize": limit,
+                "type": asset_type_normalized,
+                "limit": limit,
             }
             try:
                 print(f"      -> Página {page}: solicitando catálogo ({asset_type})...", flush=True)
                 payload = await client.quote_list(
-                    type=asset_type,
+                    type=asset_type_normalized,
                     page=page,
                     page_size=limit,
                 )
@@ -258,7 +264,7 @@ async def sync_assets(session: AsyncSession, asset_type: str, limit: int = 100) 
                             if isinstance(asset.raw, dict) and asset.raw:
                                 existing_asset.raw = asset.raw
                             existing_asset.updated_at = utcnow()
-                            session.merge(existing_asset)
+                            await session.merge(existing_asset)
                             stats["updated"] += 1
                         else:
                             # New asset – enrich if needed and add

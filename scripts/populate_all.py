@@ -12,7 +12,7 @@ import asyncio
 import sys
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 # Adicionar projeto ao path
 project_root = Path(__file__).parent.parent
@@ -58,8 +58,8 @@ async def populate_catalog():
     """Popula o catálogo completo."""
     print("\n📊 Populando catálogo de ativos...")
 
-    # Sincronizar todos os tipos de ativos suportados no plano free
-    asset_types = ["stock", "fund", "bdr", "etf", "index"]
+    # Sincronizar apenas tipos suportados no plano gratuito
+    asset_types = ["stock", "fund", "bdr"]
     total_stats = {"processed": 0, "inserted": 0, "updated": 0, "errors": 0, "pages": 0}
 
     async with AsyncSessionLocal() as session:
@@ -95,7 +95,7 @@ async def populate_historical_data(range_period: str = "3mo", interval: str = "1
         try:
             tickers_result = await session.execute(
                 select(Asset.ticker)
-                .where(Asset.type.in_(["stock", "fund", "etf", "bdr"]))
+                .where(Asset.type.in_(["stock", "fund", "bdr"]))
                 .order_by(Asset.ticker)
             )
             all_tickers = [row[0] for row in tickers_result.fetchall() if row[0]]
@@ -116,14 +116,22 @@ async def populate_historical_data(range_period: str = "3mo", interval: str = "1
 
             for ticker in all_tickers:
                 try:
+                    params: dict[str, Any] = {
+                        "range": range_period,
+                        "interval": interval,
+                        "dividends": False,
+                        "fundamental": False,
+                        "modules": None,
+                        "plan": "free",
+                    }
                     result = await fetch_and_enrich_asset(
                         ticker,
-                        range=range_period,
-                        interval=interval,
-                        dividends=True,
-                        fundamental=True,
-                        modules=["financialData"],
-                        plan="free",
+                        range=params["range"],
+                        interval=params["interval"],
+                        dividends=params["dividends"],
+                        fundamental=params["fundamental"],
+                        modules=params["modules"],
+                        plan=params["plan"],
                     )
 
                     total_ohlcv += result.get("ohlcv_rows_upserted", 0)

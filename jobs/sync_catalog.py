@@ -26,8 +26,8 @@ from datetime import datetime
 
 async def main():
     parser = argparse.ArgumentParser(description="Sincronizar catálogo de ativos")
-    parser.add_argument("--type", choices=["stock", "fund", "bdr", "etf", "index"], 
-                       help="Tipo de ativo para sincronizar")
+    parser.add_argument("--type", choices=["stock", "fund", "bdr"], 
+                       help="Tipo de ativo para sincronizar (plan free: stock, fund, bdr)")
     parser.add_argument("--limit", type=int, default=100, 
                        help="Limite de ativos por página (default: 100)")
     parser.add_argument("--all", action="store_true", 
@@ -47,12 +47,17 @@ async def main():
     
     # Determinar tipos para sincronizar
     if args.all:
-        types = ["stock", "fund", "bdr", "etf", "index"]
+        types = ["stock", "fund", "bdr"]
     elif args.type:
         types = [args.type]
     else:
         # Default: sincronizar ações
         types = ["stock"]
+
+    unsupported = {"etf", "index"}
+    if unsupported.intersection(set(types)):
+        print("⚠️  Plano gratuito não suporta sincronização direta de etf/index via /api/quote/list.")
+        types = [t for t in types if t in {"stock", "fund", "bdr"}]
     
     print(f"📊 Tipos a sincronizar: {', '.join(types)}")
     print(f"⚙️  Limite por página: {args.limit}")

@@ -306,7 +306,7 @@ class TestCatalogService:
         """Testa sincronização de ativos com sucesso."""
         # Mock BrapiClient
         mock_client = AsyncMock()
-        mock_client.available = AsyncMock(return_value={
+        mock_client.quote_list = AsyncMock(return_value={
             "stocks": [
                 {
                     "symbol": "TEST4",
@@ -315,7 +315,9 @@ class TestCatalogService:
                     "sector": "Test"
                 }
             ],
-            "pagination": {"hasMore": False, "totalItems": 1}
+            "hasNextPage": False,
+            "currentPage": 1,
+            "totalPages": 1
         })
         mock_client.quote = AsyncMock(return_value={"results": []})
         mock_brapi_client.return_value = mock_client
@@ -335,7 +337,7 @@ class TestCatalogService:
         assert stats["pages"] == 1
         
         # Verifica que chamou API
-        mock_client.available.assert_called_once()
+        mock_client.quote_list.assert_called_once()
         
         # Verifica que logou a chamada
         mock_log_call.assert_called()
