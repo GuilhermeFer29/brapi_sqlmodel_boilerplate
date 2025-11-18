@@ -200,6 +200,82 @@ asyncio.run(main())
 PY
 ```
 
+## 📚 Database Schema Documentation
+
+The project uses **SQLModel** to model the relational schema. Below is a summary of each table, its purpose, columns and mapping to the brapi.dev API (free plan).
+
+### `assets`
+| Column | Type | Description | brapi.dev mapping |
+|---|---|---|---|
+| id | Integer PK | Internal identifier | – |
+| ticker | String | Symbol (e.g. PETR4) | `symbol` |
+| name | String | Full name | `name` |
+| type | String | `stock`, `fund`, `bdr` (free plan) | `type` |
+| sector | String | Economic sector | `sector` |
+| segment | String | Sub‑sector | `segment` |
+| isin | String | ISIN code | `isin` |
+| logo_url | String | Logo URL | `logo` |
+| raw | JSON | Raw payload snapshot | – |
+| created_at / updated_at | datetime | Timestamps | – |
+
+### `quote_ohlcv`
+| Column | Type | Description | brapi.dev mapping |
+|---|---|---|---|
+| id | Integer PK | – | – |
+| ticker | String | FK to `assets.ticker` | `symbol` |
+| date | datetime | Candle date | `date` |
+| open | Float | Opening price | `open` |
+| high | Float | Highest price | `high` |
+| low | Float | Lowest price | `low` |
+| close | Float | Closing price | `close` |
+| adj_close | Float (opt) | Adjusted close | `adjClose` |
+| volume | Integer | Traded volume | `volume` |
+| raw | JSON | Full candle payload | – |
+
+### `dividend`
+| Column | Type | Description | brapi.dev mapping |
+|---|---|---|---|
+| id | Integer PK | – | – |
+| ticker | String | FK to `assets.ticker` | `symbol` |
+| ex_date | datetime | Ex‑date | `exDate` |
+| payment_date | datetime | Payment date | `paymentDate` |
+| amount | Float | Dividend amount | `amount` |
+| currency | String | Currency | `currency` |
+| type | String | Dividend type | `type` |
+| raw | JSON | Full payload | – |
+
+### `financials_ttm`
+| Column | Type | Description | brapi.dev mapping |
+|---|---|---|---|
+| id | Integer PK | – | – |
+| ticker | String | FK to `assets.ticker` | `symbol` |
+| data | JSON | TTM financial indicators (e.g. `priceEarnings`) | `financialData` |
+| updated_at | datetime | Last refresh | – |
+
+### `api_calls`
+| Column | Type | Description |
+|---|---|---|
+| id | Integer PK | – |
+| endpoint | String | API endpoint name |
+| tickers | String | Comma‑separated tickers |
+| params | JSON | Request parameters |
+| cached | Boolean | From Redis cache |
+| status_code | Integer | HTTP status |
+| error | String (opt) | Error message |
+| response | JSON (opt) | API payload |
+| created_at | datetime | Timestamp |
+
+**Note:** The free plan only supports `stock`, `fund` and `bdr` asset types; attempts to request `etf` or `index` return HTTP 417. Parameters `fundamental` and `dividends` are rejected (HTTP 403). The code enforces these limits in `catalog_service`, `populate_all.py` and the CLI job.
+
+### References
+- **Listar Cotações** – <https://brapi.dev/docs/acoes/list>
+- **Detalhes da Cotação** – <https://brapi.dev/docs/acoes/quote>
+- **Limitações do Plano Free** – <https://brapi.dev/en/docs/plan#free>
+- **Código de erro 417** – <https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/417>
+- **Código de erro 403** – <https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403>
+
+```
+
 > Dica: os padrões de chave incluem um trecho humano (`quote:PETR4:...`), facilitando inspeções manuais no Redis.
 
 ### Sincronizar Catálogo
@@ -444,18 +520,6 @@ print(f"Found {len(ohlcv['data'])} data points for {ohlcv['ticker']}")
 - **QuoteOHLCV**: Séries históricas (date, open, high, low, close, volume)
 - **Dividend**: Dados de dividendos (ex_date, payment_date, amount)
 - **ApiCall**: Auditoria (endpoint, params, status, cache_hit)
-
-## 🤝 Contribuição
-
-1. Fork o projeto
-2. Criar feature branch: `git checkout -b feature/nova-funcionalidade`
-3. Commit changes: `git commit -am 'Add nova funcionalidade'`
-4. Push: `git push origin feature/nova-funcionalidade`
-5. Pull request
-
-## 📄 Licença
-
-MIT License - ver arquivo [LICENSE](LICENSE) para detalhes.
 
 ## 🔗 Links Úteis
 
