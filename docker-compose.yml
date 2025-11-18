@@ -21,12 +21,24 @@ services:
     
   streamlit:
     build: .
-    command: ["streamlit", "run", "streamlit_app.py", "--server.address=0.0.0.0", "--server.port=8501"]
+    command:
+      [
+        "streamlit",
+        "run",
+        "streamlit_frontend/main.py",
+        "--server.address=0.0.0.0",
+        "--server.port=8501"
+      ]
     env_file:
       - .env
+    environment:
+      API_BASE_URL: http://api:8000
+      DATABASE_URL: mysql+asyncmy://brapi_user:brapi_pass@mysql:3306/brapi_db
+      STREAMLIT_SERVER_HEADLESS: "true"
     ports:
       - "8501:8501"
     volumes:
       - ./:/app
     depends_on:
       - api
+      - mysql

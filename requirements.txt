@@ -5,6 +5,7 @@ pydantic-settings
 redis
 SQLAlchemy
 asyncmy
+pymysql
 sqlmodel
 python-dotenv
 brapi
